@@ -9,7 +9,6 @@ notebook = {
             "source": [
                 "# Titanic Survival Classifier — Pipeline & Exploratory Data Analysis (EDA)\n",
                 "\n",
-                "**Concentration Pipeline: Project 1**  \n",
                 "**Problem:** Tabular Binary Classification (Kaggle Titanic Dataset)  \n",
                 "**Target:** `Survived` ($0 = \\text{Died}, 1 = \\text{Survived}$)  \n",
                 "**Core Focus:** Strict end-to-end ML workflow, zero data leakage, and rigorous statistical exploration.\n",
@@ -18,13 +17,14 @@ notebook = {
                 "\n",
                 "## Pipeline Structure\n",
                 "1. **Environment Setup & Data Ingestion**\n",
-                "2. **Exploratory Data Analysis (EDA)** *(Current Section)*\n",
-                "3. **Data Partitioning & Leakage Prevention**\n",
-                "4. **Feature Engineering & Preprocessing Pipelines**\n",
-                "5. **Baseline Benchmark & Multi-Model Cross-Validation**\n",
-                "6. **Evaluation Metrics & Asymmetric Error Analysis**\n",
-                "7. **Hyperparameter Optimization**\n",
-                "8. **Final Test Evaluation & Model Interpretability**"
+                "2. **Exploratory Data Analysis (EDA)**\n",
+                "3. **Data Partitioning & Leakage Prevention** *(New)*\n",
+                "4. **Custom Transformers & Preprocessing Architecture** *(New)*\n",
+                "5. **Feature Engineering & Preprocessing Pipeline Assembly**\n",
+                "6. **Baseline Benchmark & Multi-Model Cross-Validation**\n",
+                "7. **Evaluation Metrics & Asymmetric Error Analysis**\n",
+                "8. **Hyperparameter Optimization**\n",
+                "9. **Final Test Evaluation & Model Interpretability**"
             ]
         },
         {
@@ -46,6 +46,8 @@ notebook = {
                 "import pandas as pd\n",
                 "import matplotlib.pyplot as plt\n",
                 "import seaborn as sns\n",
+                "from sklearn.model_selection import train_test_split\n",
+                "from sklearn.base import BaseEstimator, TransformerMixin\n",
                 "\n",
                 "# Set random seed for complete reproducibility\n",
                 "RANDOM_STATE = 42\n",
@@ -473,18 +475,161 @@ notebook = {
             "cell_type": "markdown",
             "metadata": {},
             "source": [
-                "## 10. Summary of Exploratory Findings & Pipeline Roadmap\n",
+                "## 10. Data Partitioning & Zero-Leakage Protocol\n",
                 "\n",
-                "### Summary of Exploratory Analysis:\n",
-                "1. **Environment Setup:** Local virtual environment configured with pinned dependencies.\n",
-                "2. **Data Ingestion:** Loaded raw dataset into `data/` while ensuring `test.csv` remains strictly isolated.\n",
-                "3. **Comprehensive EDA:** Validated 891 labeled samples and revealed primary survival gradients (`Sex`, `Pclass`, `AgeGroup`, `FamilySize`).\n",
-                "4. **Missing Data Strategy Defined:** Detailed mathematical and domain justifications for handling `Age`, `Cabin`, `Embarked`, and `Fare` without data leakage.\n",
-                "5. **Feature Engineering Validated:** Confirmed that `TitleGroup`, `FamilySize`, `IsAlone`, and `HasCabin` provide strong discriminative signal.\n",
+                "### The Imperative of Zero Data Leakage\n",
+                "**Data leakage** occurs when information from outside the training dataset (such as the validation fold, test set, or target variable) is used during feature preprocessing, parameter estimation, or model selection. \n",
                 "\n",
-                "### Next Steps:\n",
-                "- **Leakage Prevention Architecture:** Partition `train.csv` into Train (80%) and Test (20%) using `StratifiedShuffleSplit`.\n",
-                "- **Scikit-Learn Preprocessing Pipelines:** Assemble `Pipeline` and `ColumnTransformer` modules that `fit` strictly on training folds and `transform` unseen test partitions."
+                "A subtle but widespread blunder in tabular ML is computing global preprocessing parameters (e.g. median age, category frequencies, scaling means) across the complete dataset *before* splitting. Doing so allows information about the test distribution to contaminate model training, creating artificially optimistic cross-validation results that fail in production.\n",
+                "\n",
+                "### Stratified Splitting Strategy\n",
+                "Because our target variable `Survived` is moderately imbalanced (61.6% deceased vs. 38.4% survived), a purely random split risks sampling variance where target proportions drift between folds. We employ **Stratified Splitting** to enforce identical target distributions across partitions:\n",
+                "- **Training Partition (`X_train`, `y_train`):** 80% (712 passengers) — used for all transformer fitting, cross-validation, and hyperparameter tuning.\n",
+                "- **Held-Out Test Partition (`X_test`, `y_test`):** 20% (179 passengers) — strictly isolated and untouched until final evaluation."
+            ]
+        },
+        {
+            "cell_type": "code",
+            "execution_count": None,
+            "metadata": {},
+            "outputs": [],
+            "source": [
+                "# Isolate feature matrix X and target vector y\n",
+                "X = train_df.drop(columns=['Survived', 'PassengerId'])\n",
+                "y = train_df['Survived']\n",
+                "\n",
+                "# Stratified 80/20 train/test split\n",
+                "X_train, X_test, y_train, y_test = train_test_split(\n",
+                "    X, y, test_size=0.20, random_state=RANDOM_STATE, stratify=y\n",
+                ")\n",
+                "\n",
+                "print(f\"X_train shape: {X_train.shape}, y_train shape: {y_train.shape}\")\n",
+                "print(f\"X_test shape:  {X_test.shape},  y_test shape:  {y_test.shape}\")"
+            ]
+        },
+        {
+            "cell_type": "code",
+            "execution_count": None,
+            "metadata": {},
+            "outputs": [],
+            "source": [
+                "# Verify stratification integrity across splits\n",
+                "strat_check = pd.DataFrame({\n",
+                "    'Original Population (%)': y.value_counts(normalize=True) * 100,\n",
+                "    'Training Split (%)': y_train.value_counts(normalize=True) * 100,\n",
+                "    'Held-Out Test (%)': y_test.value_counts(normalize=True) * 100\n",
+                "})\n",
+                "strat_check.index = ['Died (0)', 'Survived (1)']\n",
+                "print(\"Stratification Verification:\")\n",
+                "print(strat_check.round(2))\n",
+                "\n",
+                "fig, ax = plt.subplots(figsize=(7, 4))\n",
+                "strat_check.plot(kind='bar', ax=ax, colormap='Set2', width=0.7)\n",
+                "ax.set_title('Target Distribution Across Partitions (Stratification Check)', fontsize=13, fontweight='bold')\n",
+                "ax.set_ylabel('Percentage of Samples (%)')\n",
+                "ax.set_ylim(0, 80)\n",
+                "for p in ax.patches:\n",
+                "    ax.annotate(f\"{p.get_height():.1f}%\",\n",
+                "                (p.get_x() + p.get_width() / 2., p.get_height() + 1.2),\n",
+                "                ha='center', va='bottom', fontsize=9, fontweight='bold')\n",
+                "plt.xticks(rotation=0)\n",
+                "plt.tight_layout()\n",
+                "plt.show()"
+            ]
+        },
+        {
+            "cell_type": "markdown",
+            "metadata": {},
+            "source": [
+                "## 11. Custom Scikit-Learn Preprocessing Transformers\n",
+                "\n",
+                "To guarantee zero data leakage and enable seamless pipelining, we implement custom transformers that strictly adhere to Scikit-Learn's **Estimator & Transformer Contract**:\n",
+                "\n",
+                "1. **`fit(X, y=None)`:** Learns parameter states (such as group medians or common category lists) exclusively from `X_train` and stores them as internal attributes.\n",
+                "2. **`transform(X)`:** Applies deterministic transformations using the stored parameters to any incoming dataset without recalculating or modifying state.\n",
+                "\n",
+                "### Transformers Implemented:\n",
+                "- **`TitleExtractor`:** Extracts titles from `Name` and groups infrequent titles into `'Rare'` based on training frequency.\n",
+                "- **`FamilyFeaturesAdder`:** Creates `FamilySize = SibSp + Parch + 1` and `IsAlone = (FamilySize == 1)`.\n",
+                "- **`CabinIndicator`:** Extracts `HasCabin` indicator.\n",
+                "- **`GroupedAgeImputer`:** Imputes missing `Age` values using conditional medians calculated within each `(TitleGroup, Pclass)` cohort learned on `X_train`."
+            ]
+        },
+        {
+            "cell_type": "code",
+            "execution_count": None,
+            "metadata": {},
+            "outputs": [],
+            "source": [
+                "from src.transformers import (\n",
+                "    TitleExtractor,\n",
+                "    FamilyFeaturesAdder,\n",
+                "    CabinIndicator,\n",
+                "    GroupedAgeImputer\n",
+                ")\n",
+                "\n",
+                "# Instantiate transformers\n",
+                "title_extractor = TitleExtractor()\n",
+                "family_adder = FamilyFeaturesAdder()\n",
+                "cabin_indicator = CabinIndicator()\n",
+                "age_imputer = GroupedAgeImputer()\n",
+                "\n",
+                "# Fit transformers strictly on X_train\n",
+                "age_imputer.fit(X_train)\n",
+                "print(\"Grouped medians learned strictly from X_train:\")\n",
+                "for k, v in sorted(age_imputer.group_medians_.items()):\n",
+                "    print(f\"  Title: {k[0]:<7} | Pclass: {k[1]} -> Median Age: {v:.1f}\")\n",
+                "print(f\"Fallback Global Median (from X_train): {age_imputer.global_median_:.1f}\")"
+            ]
+        },
+        {
+            "cell_type": "markdown",
+            "metadata": {},
+            "source": [
+                "### Validating Preprocessing Transformations on Train and Test Sets\n",
+                "Now we transform both `X_train` and `X_test`, confirming that missing values are resolved and engineered features are attached without any leakage."
+            ]
+        },
+        {
+            "cell_type": "code",
+            "execution_count": None,
+            "metadata": {},
+            "outputs": [],
+            "source": [
+                "def apply_custom_pipeline(df, imputer):\n",
+                "    df_t = df.copy()\n",
+                "    df_t = TitleExtractor().transform(df_t)\n",
+                "    df_t = FamilyFeaturesAdder().transform(df_t)\n",
+                "    df_t = CabinIndicator().transform(df_t)\n",
+                "    df_t = imputer.transform(df_t)\n",
+                "    return df_t\n",
+                "\n",
+                "X_train_proc = apply_custom_pipeline(X_train, age_imputer)\n",
+                "X_test_proc = apply_custom_pipeline(X_test, age_imputer)\n",
+                "\n",
+                "print(f\"X_train_proc missing ages: {X_train_proc['Age'].isnull().sum()}\")\n",
+                "print(f\"X_test_proc missing ages:  {X_test_proc['Age'].isnull().sum()}\")\n",
+                "print(\"\\nSample of transformed training features:\")\n",
+                "cols_to_preview = ['Pclass', 'Sex', 'Age', 'FamilySize', 'IsAlone', 'TitleGroup', 'HasCabin', 'Embarked']\n",
+                "display(X_train_proc[cols_to_preview].head())"
+            ]
+        },
+        {
+            "cell_type": "markdown",
+            "metadata": {},
+            "source": [
+                "## 12. Summary & Preprocessing Architecture Readiness\n",
+                "\n",
+                "### Accomplishments:\n",
+                "1. **Strict Partitioning:** Created stratified 80/20 train/test split (712 train, 179 test), guaranteeing equal target representation.\n",
+                "2. **Zero-Leakage Guarantee:** `X_test` remains completely unobserved during transformer parameter fitting.\n",
+                "3. **Engineered Feature Transformers:** Built modular, reusable Scikit-Learn transformers in `src/transformers.py` for `TitleGroup`, `FamilySize`, `IsAlone`, `HasCabin`, and conditioned `Age` imputation.\n",
+                "4. **Verified Imputation:** Successfully imputed all missing age values using demographic subpopulation medians learned exclusively from `X_train`.\n",
+                "\n",
+                "### Upcoming Next:\n",
+                "- Assembly of the unified `ColumnTransformer` (incorporating `OneHotEncoder` for categoricals and `StandardScaler` for numeric features).\n",
+                "- Construction of baseline benchmark model (`DummyClassifier`).\n",
+                "- Training and cross-validation of initial model families (Logistic Regression, Random Forest, Gradient Boosting)."
             ]
         }
     ],
@@ -506,4 +651,4 @@ notebook = {
 with open("titanic_pipeline.ipynb", "w", encoding="utf-8") as f:
     json.dump(notebook, f, indent=2)
 
-print("titanic_pipeline.ipynb regenerated without public phase labels.")
+print("titanic_pipeline.ipynb updated with data partitioning and preprocessing transformers!")

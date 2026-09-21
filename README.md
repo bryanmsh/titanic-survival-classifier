@@ -1,6 +1,5 @@
 # Titanic Survival Classifier
 
-**Concentration Pipeline — Project 1: Tabular Machine Learning**  
 *An end-to-end, leak-free classical machine learning pipeline predicting passenger survival on the Titanic.*
 
 [![Python](https://img.shields.io/badge/Python-3.12-blue.svg)](https://www.python.org/)
@@ -79,11 +78,22 @@ The exploratory analysis is documented in [`titanic_pipeline.ipynb`](./titanic_p
    - Moderate families (2–4 total members) had survival rates above 55%.
    - Very large families (5+ members) suffered severe mortality ($< 20\%$), likely due to evacuation chaos.
 
-6. **Missing Data Diagnosis & Strategy:**
-   - `Age`: 177 missing (19.87%) $\to$ Planned treatment: conditional group median by `Title` and `Pclass`.
-   - `Cabin`: 687 missing (77.10%) $\to$ Planned treatment: binary `HasCabin` indicator feature (missingness is informative / MNAR).
-   - `Embarked`: 2 missing (0.22%) $\to$ Planned treatment: mode imputation (`'S'`).
-   - `Fare`: 1 missing in test set $\to$ Planned treatment: class-based median imputation.
+---
+
+## Data Partitioning & Leak-Free Architecture
+
+To prevent data leakage, the training dataset is partitioned and preprocessed using a strictly decoupled architecture:
+
+1. **Stratified Partitioning:**
+   - Partitioned into **80% Development Training** (712 samples) and **20% Held-Out Test** (179 samples).
+   - Stratified on `Survived` to ensure identical target distributions across both partitions (38.34% vs. 38.55%).
+   - The 20% test partition remains completely isolated and untouched until final evaluation.
+
+2. **Custom Scikit-Learn Transformers (`src/transformers.py`):**
+   - `TitleExtractor`: Extracts honorific titles from `Name` and collapses rare titles into an `'Rare'` bucket.
+   - `FamilyFeaturesAdder`: Computes `FamilySize` and `IsAlone`.
+   - `CabinIndicator`: Extracts binary presence flag `HasCabin`.
+   - `GroupedAgeImputer`: Imputes missing `Age` values using conditional group medians (`Title` $\times$ `Pclass`) fitted **exclusively on the training split**.
 
 ---
 

@@ -8,10 +8,18 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
 def run_notebook(notebook_path):
+    root_dir = os.path.abspath('.')
+    if root_dir not in sys.path:
+        sys.path.insert(0, root_dir)
+
     with open(notebook_path, 'r', encoding='utf-8') as f:
         nb = json.load(f)
 
-    global_scope = {}
+    def notebook_display(*args):
+        for arg in args:
+            print(arg)
+
+    global_scope = {'display': notebook_display}
     exec_count = 1
 
     for cell in nb['cells']:
