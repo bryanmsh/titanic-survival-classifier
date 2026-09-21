@@ -1,6 +1,6 @@
 # Titanic Survival Classifier
 
-*An end-to-end, leak-free classical machine learning pipeline predicting passenger survival on the Titanic.*
+*End-to-end, leak-free classical machine learning pipeline predicting passenger survival on the Titanic.*
 
 [![Python](https://img.shields.io/badge/Python-3.12-blue.svg)](https://www.python.org/)
 [![scikit-learn](https://img.shields.io/badge/scikit--learn-1.4+-orange.svg)](https://scikit-learn.org/)
