@@ -1,1 +1,1 @@
-# tabular-prediction
+# titanic-survival-classifier
