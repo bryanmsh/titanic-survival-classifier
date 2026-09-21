@@ -18,9 +18,9 @@ notebook = {
                 "## Pipeline Structure\n",
                 "1. **Environment Setup & Data Ingestion**\n",
                 "2. **Exploratory Data Analysis (EDA)**\n",
-                "3. **Data Partitioning & Leakage Prevention** *(New)*\n",
-                "4. **Custom Transformers & Preprocessing Architecture** *(New)*\n",
-                "5. **Feature Engineering & Preprocessing Pipeline Assembly**\n",
+                "3. **Data Partitioning & Leakage Prevention**\n",
+                "4. **Custom Transformers & Preprocessing Architecture**\n",
+                "5. **Feature Engineering & Preprocessing Pipeline Assembly** *(Current Section)*\n",
                 "6. **Baseline Benchmark & Multi-Model Cross-Validation**\n",
                 "7. **Evaluation Metrics & Asymmetric Error Analysis**\n",
                 "8. **Hyperparameter Optimization**\n",
@@ -48,6 +48,10 @@ notebook = {
                 "import seaborn as sns\n",
                 "from sklearn.model_selection import train_test_split\n",
                 "from sklearn.base import BaseEstimator, TransformerMixin\n",
+                "from sklearn.pipeline import Pipeline\n",
+                "from sklearn.compose import ColumnTransformer\n",
+                "from sklearn.preprocessing import OneHotEncoder, StandardScaler\n",
+                "from sklearn.impute import SimpleImputer\n",
                 "\n",
                 "# Set random seed for complete reproducibility\n",
                 "RANDOM_STATE = 42\n",
@@ -586,8 +590,20 @@ notebook = {
             "cell_type": "markdown",
             "metadata": {},
             "source": [
-                "### Validating Preprocessing Transformations on Train and Test Sets\n",
-                "Now we transform both `X_train` and `X_test`, confirming that missing values are resolved and engineered features are attached without any leakage."
+                "## 12. Unified ColumnTransformer & Full Preprocessing Pipeline\n",
+                "\n",
+                "Now we combine our custom transformers and standard Scikit-Learn transformers into a single composite pipeline. We define three parallel preprocessing branches via **`ColumnTransformer`**:\n",
+                "\n",
+                "1. **Numeric Branch (`['Age', 'Fare', 'FamilySize', 'Pclass']`):**\n",
+                "   - `SimpleImputer(strategy='median')`: Handles any remaining missing values (such as the single missing `Fare` row in `test.csv`).\n",
+                "   - `StandardScaler()`: Standardizes features to zero mean ($\mu = 0$) and unit variance ($\sigma = 1$). Essential for gradient descent convergence and coefficient interpretation in regularized linear models (Logistic Regression).\n",
+                "2. **Categorical Branch (`['Sex', 'Embarked', 'TitleGroup']`):**\n",
+                "   - `SimpleImputer(strategy='most_frequent')`: Imputes missing ports with mode `'S'`.\n",
+                "   - `OneHotEncoder(handle_unknown='ignore', sparse_output=False)`: Converts nominal levels into binary dummy columns. Any unseen categories encountered in future data are gracefully handled without crashing.\n",
+                "3. **Binary Branch (`['IsAlone', 'HasCabin']`):**\n",
+                "   - Passed through directly as clean 0/1 binary indicators.\n",
+                "4. **Drop Uninformative Features:**\n",
+                "   - High-cardinality text columns (`Name`, `Ticket`, `Cabin`) and raw components (`SibSp`, `Parch`) are dropped from the final design matrix."
             ]
         },
         {
@@ -596,40 +612,97 @@ notebook = {
             "metadata": {},
             "outputs": [],
             "source": [
-                "def apply_custom_pipeline(df, imputer):\n",
-                "    df_t = df.copy()\n",
-                "    df_t = TitleExtractor().transform(df_t)\n",
-                "    df_t = FamilyFeaturesAdder().transform(df_t)\n",
-                "    df_t = CabinIndicator().transform(df_t)\n",
-                "    df_t = imputer.transform(df_t)\n",
-                "    return df_t\n",
+                "from src.pipeline import build_preprocessor\n",
                 "\n",
-                "X_train_proc = apply_custom_pipeline(X_train, age_imputer)\n",
-                "X_test_proc = apply_custom_pipeline(X_test, age_imputer)\n",
-                "\n",
-                "print(f\"X_train_proc missing ages: {X_train_proc['Age'].isnull().sum()}\")\n",
-                "print(f\"X_test_proc missing ages:  {X_test_proc['Age'].isnull().sum()}\")\n",
-                "print(\"\\nSample of transformed training features:\")\n",
-                "cols_to_preview = ['Pclass', 'Sex', 'Age', 'FamilySize', 'IsAlone', 'TitleGroup', 'HasCabin', 'Embarked']\n",
-                "display(X_train_proc[cols_to_preview].head())"
+                "# Instantiate the end-to-end preprocessing pipeline\n",
+                "preprocessor = build_preprocessor(scale_numeric=True)\n",
+                "print(\"Preprocessor Pipeline Architecture:\")\n",
+                "print(preprocessor)"
             ]
         },
         {
             "cell_type": "markdown",
             "metadata": {},
             "source": [
-                "## 12. Summary & Preprocessing Architecture Readiness\n",
+                "## 13. Pipeline Fitting & Design Matrix Inspection\n",
                 "\n",
-                "### Accomplishments:\n",
-                "1. **Strict Partitioning:** Created stratified 80/20 train/test split (712 train, 179 test), guaranteeing equal target representation.\n",
-                "2. **Zero-Leakage Guarantee:** `X_test` remains completely unobserved during transformer parameter fitting.\n",
-                "3. **Engineered Feature Transformers:** Built modular, reusable Scikit-Learn transformers in `src/transformers.py` for `TitleGroup`, `FamilySize`, `IsAlone`, `HasCabin`, and conditioned `Age` imputation.\n",
-                "4. **Verified Imputation:** Successfully imputed all missing age values using demographic subpopulation medians learned exclusively from `X_train`.\n",
+                "We fit the entire composite preprocessor **strictly on `X_train`** and transform both `X_train` and `X_test`.\n",
                 "\n",
-                "### Upcoming Next:\n",
-                "- Assembly of the unified `ColumnTransformer` (incorporating `OneHotEncoder` for categoricals and `StandardScaler` for numeric features).\n",
-                "- Construction of baseline benchmark model (`DummyClassifier`).\n",
-                "- Training and cross-validation of initial model families (Logistic Regression, Random Forest, Gradient Boosting)."
+                "Let's inspect the resulting numerical design matrix, column names, and check for any remaining missing values."
+            ]
+        },
+        {
+            "cell_type": "code",
+            "execution_count": None,
+            "metadata": {},
+            "outputs": [],
+            "source": [
+                "# Fit and transform training features strictly on X_train\n",
+                "X_train_trans = preprocessor.fit_transform(X_train)\n",
+                "\n",
+                "# Transform unseen test partition without refitting\n",
+                "X_test_trans = preprocessor.transform(X_test)\n",
+                "\n",
+                "# Retrieve generated feature names from ColumnTransformer\n",
+                "col_transformer = preprocessor.named_steps['column_transform']\n",
+                "feature_names = col_transformer.get_feature_names_out()\n",
+                "\n",
+                "print(f\"Processed X_train matrix shape: {X_train_trans.shape} (712 samples, {len(feature_names)} features)\")\n",
+                "print(f\"Processed X_test matrix shape:  {X_test_trans.shape} (179 samples, {len(feature_names)} features)\")\n",
+                "print(f\"Total NaN count in X_train: {np.isnan(X_train_trans).sum()}\")\n",
+                "print(f\"Total NaN count in X_test:  {np.isnan(X_test_trans).sum()}\")\n",
+                "\n",
+                "# Construct DataFrame for inspection\n",
+                "X_train_df = pd.DataFrame(X_train_trans, columns=feature_names)\n",
+                "print(\"\\nTransformed Design Matrix (First 5 Rows):\")\n",
+                "display(X_train_df.head())"
+            ]
+        },
+        {
+            "cell_type": "markdown",
+            "metadata": {},
+            "source": [
+                "### Distribution of Standardized Numeric Features\n",
+                "Let's verify that `StandardScaler` successfully centered the continuous variables (`Age`, `Fare`, `FamilySize`) around $\\mu = 0$ with $\\sigma = 1$ on the training split."
+            ]
+        },
+        {
+            "cell_type": "code",
+            "execution_count": None,
+            "metadata": {},
+            "outputs": [],
+            "source": [
+                "fig, axes = plt.subplots(1, 3, figsize=(15, 4))\n",
+                "\n",
+                "sns.kdeplot(X_train_df['num__Age'], fill=True, color='#3498db', ax=axes[0])\n",
+                "axes[0].set_title(f\"Standardized Age\\n(Mean: {X_train_df['num__Age'].mean():.2f}, Std: {X_train_df['num__Age'].std():.2f})\", fontsize=11, fontweight='bold')\n",
+                "\n",
+                "sns.kdeplot(X_train_df['num__Fare'], fill=True, color='#2ecc71', ax=axes[1])\n",
+                "axes[1].set_title(f\"Standardized Fare\\n(Mean: {X_train_df['num__Fare'].mean():.2f}, Std: {X_train_df['num__Fare'].std():.2f})\", fontsize=11, fontweight='bold')\n",
+                "\n",
+                "sns.kdeplot(X_train_df['num__FamilySize'], fill=True, color='#9b59b6', ax=axes[2])\n",
+                "axes[2].set_title(f\"Standardized Family Size\\n(Mean: {X_train_df['num__FamilySize'].mean():.2f}, Std: {X_train_df['num__FamilySize'].std():.2f})\", fontsize=11, fontweight='bold')\n",
+                "\n",
+                "plt.tight_layout()\n",
+                "plt.show()"
+            ]
+        },
+        {
+            "cell_type": "markdown",
+            "metadata": {},
+            "source": [
+                "## 14. Summary & Modeling Readiness\n",
+                "\n",
+                "### Feature Pipeline Accomplishments:\n",
+                "1. **Complete Preprocessing Encapsulation:** Unified custom feature extraction (`TitleGroup`, `FamilySize`, `IsAlone`, `HasCabin`, grouped `Age` imputation) and standard transformations into a single, leak-free `Pipeline`.\n",
+                "2. **Zero Missingness:** Guaranteed that both train and held-out test splits contain zero missing values across all 16 design matrix columns.\n",
+                "3. **Standardized Numerical Scale:** Continuous and discrete numeric features are standardized to $\\mathcal{N}(0, 1)$ without distorting categorical indicator columns.\n",
+                "4. **One-Hot Encoding with Unknown Handling:** Categoricals (`Sex`, `Embarked`, `TitleGroup`) are cleanly encoded with `handle_unknown='ignore'`, preventing test-time dimension mismatch.\n",
+                "\n",
+                "### Next Steps:\n",
+                "- Construct the non-learning benchmark baseline (`DummyClassifier`).\n",
+                "- Train and evaluate three distinct model families using Stratified 5-Fold Cross-Validation: **Logistic Regression**, **Random Forest Classifier**, and **Gradient Boosting Classifier**.\n",
+                "- Compare models across multiple evaluation metrics (Accuracy, Precision, Recall, F1-Score, and ROC-AUC)."
             ]
         }
     ],
@@ -651,4 +724,4 @@ notebook = {
 with open("titanic_pipeline.ipynb", "w", encoding="utf-8") as f:
     json.dump(notebook, f, indent=2)
 
-print("titanic_pipeline.ipynb updated with data partitioning and preprocessing transformers!")
+print("titanic_pipeline.ipynb successfully generated with unified preprocessing pipeline!")

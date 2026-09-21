@@ -97,6 +97,22 @@ To prevent data leakage, the training dataset is partitioned and preprocessed us
 
 ---
 
+## Feature Engineering & Preprocessing Pipeline
+
+All feature transformations, conditional imputation, encoding, and scaling are unified into a composite Scikit-Learn `ColumnTransformer` and `Pipeline` ([`src/pipeline.py`](./src/pipeline.py)):
+
+1. **Feature Engineering Chain (`FeatureEngineer`):**
+   - Applies `TitleExtractor`, `FamilyFeaturesAdder`, `CabinIndicator`, and `GroupedAgeImputer` in strict sequence.
+2. **Parallel Column Routing (`ColumnTransformer`):**
+   - **Numeric Branch (`['Age', 'Fare', 'FamilySize', 'Pclass']`):** Imputed via median and standardized using `StandardScaler` ($\mu = 0, \sigma = 1$).
+   - **Categorical Branch (`['Sex', 'Embarked', 'TitleGroup']`):** Mode-imputed and one-hot encoded with `handle_unknown='ignore'`.
+   - **Binary Branch (`['IsAlone', 'HasCabin']`):** Passed through as clean binary indicators.
+   - **Dropped Features:** Raw text fields and components (`PassengerId`, `Ticket`, `Cabin`, `Name`, `SibSp`, `Parch`).
+3. **Design Matrix Output:**
+   - Produces a leak-free 16-feature design matrix ready for model training, with zero missing values across both train and held-out test partitions.
+
+---
+
 ## Local Setup & Reproduction
 
 To reproduce this project locally:
