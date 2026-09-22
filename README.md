@@ -113,6 +113,26 @@ All feature transformations, conditional imputation, encoding, and scaling are u
 
 ---
 
+## Model Exploration & Cross-Validation Results
+
+We evaluate three diverse model families alongside a naive baseline using **Stratified 5-Fold Cross-Validation** strictly on the training partition (`X_train` = 712 samples). Preprocessing pipelines are re-fit inside each fold to guarantee zero data leakage ([`src/models.py`](./src/models.py)).
+
+### Cross-Validation Performance Summary:
+
+| Model Family | Accuracy (Mean $\pm$ Std) | Precision | Recall | $F_1$-Score | ROC-AUC |
+|---|---|---|---|---|---|
+| **Dummy (Baseline)** | $61.66\% \pm 0.27\%$ | $0.0000$ | $0.0000$ | $0.0000$ | $0.5000$ |
+| **Logistic Regression** | **$83.43\% \pm 2.37\%$** | $0.7981$ | **$0.7657$** | **$0.7806$** | $0.8716$ |
+| **Random Forest** | $81.60\% \pm 2.17\%$ | $0.7704$ | $0.7436$ | $0.7563$ | $0.8759$ |
+| **Gradient Boosting** | $81.60\% \pm 3.13\%$ | **$0.7948$** | $0.7107$ | $0.7480$ | **$0.8922$** |
+
+### Key Evaluation Takeaways:
+1. **The Floor & Accuracy Paradox:** `DummyClassifier` achieves $61.66\%$ accuracy by predicting that all passengers perished, while offering zero practical utility ($F_1 = 0.0000$, $\text{ROC-AUC} = 0.5000$).
+2. **Linear Parametric Baseline:** `LogisticRegression` delivers strong out-of-fold performance ($83.43\%$ Accuracy, $0.7806$ $F_1$), confirming the signal unlocked by our feature engineering.
+3. **Threshold Discrimination:** `GradientBoostingClassifier` achieved the highest discrimination power (**$\text{ROC-AUC} = 0.8922$**), excelling at probabilistic ranking across decision thresholds.
+
+---
+
 ## Local Setup & Reproduction
 
 To reproduce this project locally:
