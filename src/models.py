@@ -117,3 +117,79 @@ def tune_gradient_boosting(X, y, cv_splits=5, random_state=42):
     cv_results_df = pd.DataFrame(grid_search.cv_results_)
 
     return grid_search.best_estimator_, grid_search.best_params_, grid_search.best_score_, cv_results_df
+
+
+def evaluate_champion_on_test(champion_pipeline, X_train, y_train, X_test, y_test):
+    """
+    Fits the tuned champion pipeline on the entire training set (80%)
+    and evaluates out-of-sample performance exactly once on the held-out test partition (20%).
+
+    Returns:
+        dict: Test metrics, predictions, probabilities, and confusion matrix.
+    """
+    from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score, confusion_matrix
+
+    champion_pipeline.fit(X_train, y_train)
+    y_pred = champion_pipeline.predict(X_test)
+    y_prob = champion_pipeline.predict_proba(X_test)[:, 1]
+
+    metrics = {
+        'Accuracy': float(accuracy_score(y_test, y_pred)),
+        'Precision': float(precision_score(y_test, y_pred)),
+        'Recall': float(recall_score(y_test, y_pred)),
+        'F1-Score': float(f1_score(y_test, y_pred)),
+        'ROC-AUC': float(roc_auc_score(y_test, y_prob))
+    }
+    cm = confusion_matrix(y_test, y_pred)
+
+    return {
+        'metrics': metrics,
+        'y_pred': y_pred,
+        'y_prob': y_prob,
+        'confusion_matrix': cm
+    }
+
+
+def compute_interpretability_diagnostics(champion_pipeline, X_test, y_test, random_state=42):
+    """
+    Extracts Mean Decrease in Impurity (Gini Importance) and computes
+    Permutation Feature Importance on the held-out test split across
+    the engineered design matrix features.
+
+    Returns:
+        dict: Feature names, MDI importance series, and Permutation importance series.
+    """
+    from sklearn.inspection import permutation_importance
+
+    preprocessor = champion_pipeline.named_steps['preprocessor']
+    col_transformer = preprocessor.named_steps['column_transform']
+    raw_feature_names = list(col_transformer.get_feature_names_out())
+    # Clean feature names for clean visual presentation
+    clean_feature_names = [f.split('__')[-1] for f in raw_feature_names]
+
+    classifier = champion_pipeline.named_steps['classifier']
+    mdi_importances = pd.Series(classifier.feature_importances_, index=clean_feature_names).sort_values(ascending=False)
+
+    # Transform test set through feature engineering & column transformer
+    X_test_transformed = preprocessor.transform(X_test)
+
+    perm_result = permutation_importance(
+        classifier,
+        X_test_transformed,
+        y_test,
+        n_repeats=10,
+        random_state=random_state,
+        scoring='roc_auc'
+    )
+
+    perm_mean = pd.Series(perm_result.importances_mean, index=clean_feature_names).sort_values(ascending=False)
+    perm_std = pd.Series(perm_result.importances_std, index=clean_feature_names).loc[perm_mean.index]
+
+    return {
+        'feature_names': clean_feature_names,
+        'mdi_importances': mdi_importances,
+        'perm_importances_mean': perm_mean,
+        'perm_importances_std': perm_std
+    }
+
+

@@ -157,6 +157,67 @@ To guard against validation overfitting on a modest dataset (~700 training obser
 
 ---
 
+## Final Held-Out Test Set Evaluation
+
+Following strict experimental protocols to prevent **Data Snooping Bias**, the 20% test partition (`X_test`, `y_test`: 179 samples) established during Phase 2 was kept completely unexamined and untouched until model development was frozen.
+
+The tuned champion pipeline was fit on the full 80% training set and evaluated **exactly once** on the held-out test partition:
+
+| Metric | Held-Out Test (20%) | 5-Fold CV Mean | Generalization Delta |
+|---|---|---|---|
+| **Accuracy** | **79.89%** | $82.87\%$ | $-2.98\%$ |
+| **Precision** | **76.19%** | $79.56\%$ | $-3.37\%$ |
+| **Recall** | **69.57%** | $73.65\%$ | $-4.08\%$ |
+| **$F_1$-Score** | **72.73%** | $76.24\%$ | $-3.51\%$ |
+| **ROC-AUC** | **0.8343** | $0.8938$ | $-0.0595$ |
+
+### Held-Out Test Confusion Matrix:
+$$\begin{pmatrix} \text{True Negatives (TN)} = 95 & \text{False Positives (FP)} = 15 \\ \text{False Negatives (FN)} = 21 & \text{True Positives (TP)} = 48 \end{pmatrix}$$
+
+- **Zero Data Snooping:** Test metrics closely align with cross-validation expectations without catastrophic distribution drop-off.
+- **Asymmetric Error Profile:** With only 15 False Positives and 21 False Negatives out of 179 samples, the model maintains a well-calibrated decision boundary. In life-critical rescue allocations, the discrimination threshold $\tau$ can be tuned downward from $0.5$ to increase Recall and minimize False Negatives.
+
+---
+
+## Model Interpretability & Feature Importance Diagnostics
+
+We evaluate feature importance using two complementary lenses: **Mean Decrease in Impurity (MDI / Gini Importance)** and out-of-sample **Permutation Feature Importance (PFI)** on the held-out test distribution.
+
+| Rank | Transformed Feature | MDI (Gini Importance) | Permutation Importance ($\Delta\text{ROC-AUC}$) | Domain Mechanism |
+|:---:|---|:---:|:---:|---|
+| **1** | `TitleGroup_Mr` | **0.285** | **0.108** | Adult male status; primary factor in "women and children first" |
+| **2** | `Pclass` | 0.110 | **0.044** | Socioeconomic status; proximity and prioritized access to lifeboats |
+| **3** | `Fare` | **0.204** | 0.026 | Correlated with upper decks (high MDI score driven by cardinality bias) |
+| **4** | `Age` | 0.121 | 0.022 | Priority evacuation of children vs. elderly adults |
+| **5** | `FamilySize` | 0.041 | 0.019 | Moderate families (2–4) survived best; solo and large families struggled |
+| **6** | `Sex_female` | 0.094 | 0.015 | Direct gender confirmation across titles |
+
+### Key Diagnostic Insight (MDI vs. Permutation Importance):
+MDI places continuous `Fare` at #2 ($0.204$) ahead of ordinal `Pclass` ($0.110$) because continuous variables have many candidate split thresholds. However, Permutation Feature Importance on held-out test data reveals that `Pclass` is actually substantially more influential ($\Delta\text{AUC} = 0.044$) than granular `Fare` variations ($\Delta\text{AUC} = 0.026$). This empirically validates the necessity of permutation testing to correct for MDI cardinality bias.
+
+---
+
+## Comprehensive Multi-Model Benchmark
+
+| Model Architecture | Evaluation Protocol | Accuracy | Precision | Recall | $F_1$-Score | ROC-AUC |
+|---|---|:---:|:---:|:---:|:---:|:---:|
+| **Dummy Baseline (Majority Class)** | 5-Fold Stratified CV | 61.66% | 0.0000 | 0.0000 | 0.0000 | 0.5000 |
+| **Logistic Regression (L2 Regularized)** | 5-Fold Stratified CV | 83.43% | 0.7981 | 0.7657 | 0.7806 | 0.8716 |
+| **Random Forest (100 Trees)** | 5-Fold Stratified CV | 81.60% | 0.7704 | 0.7436 | 0.7563 | 0.8759 |
+| **Gradient Boosting (Default / Untuned)** | 5-Fold Stratified CV | 81.60% | 0.7948 | 0.7107 | 0.7480 | 0.8922 |
+| **Gradient Boosting (Tuned Champion)** | 5-Fold Stratified CV | 82.87% | 0.7956 | 0.7365 | 0.7624 | **0.8938** |
+| **Gradient Boosting (Tuned Champion)** | **Held-Out Test Set (20%)** | **79.89%** | **0.7619** | **0.6957** | **0.7273** | **0.8343** |
+
+---
+
+## Key Engineering Takeaways
+
+1. **Leak-Free Discipline:** Feature engineering, conditional imputation (e.g. median age by `Title` $\times$ `Pclass`), and scaling must be encapsulated in reusable Scikit-Learn transformers and nested inside cross-validation loops to prevent optimistic performance bias.
+2. **Beyond Accuracy:** Trivial baseline models can achieve $>60\%$ accuracy on unbalanced problems. Proper evaluation requires Precision, Recall, $F_1$, and threshold-independent ROC-AUC coupled with domain error cost analysis.
+3. **Tree Regularization:** Bounding max tree depth (`max_depth = 3`) and applying stochastic subsampling (`subsample = 0.8`) protects boosting ensembles from overfitting modest tabular datasets.
+
+---
+
 ## Local Setup & Reproduction
 
 To reproduce this project locally:
@@ -179,3 +240,4 @@ pip install -r requirements.txt
 # 4. Run the Pipeline Notebook
 jupyter notebook titanic_pipeline.ipynb
 ```
+
