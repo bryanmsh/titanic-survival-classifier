@@ -133,6 +133,30 @@ We evaluate three diverse model families alongside a naive baseline using **Stra
 
 ---
 
+## Hyperparameter Optimization & Model Selection
+
+Following initial cross-validation, the highest-ranking candidate model (**`GradientBoostingClassifier`**) was optimized using `GridSearchCV` with Stratified 5-Fold Cross-Validation ([`src/models.py`](./src/models.py)).
+
+### Parameter Search Space & Tuning Strategy:
+To guard against validation overfitting on a modest dataset (~700 training observations), the search space was bounded around structural tree complexity and regularization controls:
+- `n_estimators`: `[80, 100, 120]`
+- `learning_rate`: `[0.03, 0.05, 0.1]`
+- `max_depth`: `[2, 3]`
+- `subsample`: `[0.8, 1.0]`
+
+### Optimization Results:
+
+| Hyperparameter | Selected Value | Structural Justification |
+|---|---|---|
+| `learning_rate` | `0.1` | Optimal convergence without over-iterating on residual noise |
+| `max_depth` | `3` | Captures 3-way interactions (`Sex` $\times$ `Pclass` $\times$ `AgeGroup`) while preventing leaf memorization |
+| `n_estimators` | `100` | Sufficient ensemble capacity prior to validation score plateau |
+| `subsample` | `0.8` | Injects stochastic bagging randomness to reduce correlation across sequential trees |
+
+**Outcome:** Tuned cross-validated **ROC-AUC reached 0.8938** (improving over the untuned baseline of 0.8922), establishing our champion model.
+
+---
+
 ## Local Setup & Reproduction
 
 To reproduce this project locally:

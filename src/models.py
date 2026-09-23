@@ -7,7 +7,7 @@ from sklearn.dummy import DummyClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
 from sklearn.pipeline import Pipeline
-from sklearn.model_selection import StratifiedKFold, cross_validate, cross_val_predict
+from sklearn.model_selection import StratifiedKFold, cross_validate, cross_val_predict, GridSearchCV
 from sklearn.exceptions import UndefinedMetricWarning
 import pandas as pd
 import numpy as np
@@ -81,3 +81,39 @@ def evaluate_models_cv(X, y, cv_splits=5, random_state=42):
 
     results_df = pd.DataFrame(records).set_index('Model')
     return results_df, oof_predictions, oof_probabilities
+
+
+def tune_gradient_boosting(X, y, cv_splits=5, random_state=42):
+    """
+    Performs cross-validated hyperparameter search over GradientBoostingClassifier
+    using Stratified K-Fold CV to maximize ROC-AUC.
+
+    Returns:
+        tuple: (best_pipeline, best_params, best_score, cv_results_df)
+    """
+    pipe = Pipeline([
+        ('preprocessor', build_preprocessor(scale_numeric=True)),
+        ('classifier', GradientBoostingClassifier(random_state=random_state))
+    ])
+
+    param_grid = {
+        'classifier__n_estimators': [80, 100, 120],
+        'classifier__learning_rate': [0.03, 0.05, 0.1],
+        'classifier__max_depth': [2, 3],
+        'classifier__subsample': [0.8, 1.0]
+    }
+
+    cv = StratifiedKFold(n_splits=cv_splits, shuffle=True, random_state=random_state)
+    grid_search = GridSearchCV(
+        pipe,
+        param_grid=param_grid,
+        cv=cv,
+        scoring='roc_auc',
+        n_jobs=1,
+        return_train_score=True
+    )
+
+    grid_search.fit(X, y)
+    cv_results_df = pd.DataFrame(grid_search.cv_results_)
+
+    return grid_search.best_estimator_, grid_search.best_params_, grid_search.best_score_, cv_results_df
